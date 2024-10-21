@@ -54,7 +54,7 @@ def generate_answer(transcript: str, short_answer: bool = True, temperature: flo
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "Authorization": 'c8eb8ae7-3f97-4255-81b9-bb0e1e1a8663'
+            "Authorization": API_SERVICE_KEY
         }
         response = requests.post(URL, json=payload, headers=headers)
 
