@@ -1,7 +1,11 @@
-INTERVIEW_POSTION = "python developer"
-OPENAI_API_KEY = ""
+INTERVIEW_POSTION = "developer"
+API_SERVICE_KEY = ""
 
 OUTPUT_FILE_NAME = "out.wav"  # audio file name.
+
+DEVICE = "cuda"
+
+URL = "https://api.corcel.io/v1/chat/completions"
 
 SAMPLE_RATE = 48000  # [Hz]. sampling rate.
 RECORD_SEC = 1  # [sec]. duration recording audio.

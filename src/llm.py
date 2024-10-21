@@ -1,77 +1,80 @@
+import json
+
 import openai
+import whisper
+import requests
+import torch
 from loguru import logger
 
-from src.constants import INTERVIEW_POSTION, OPENAI_API_KEY, OUTPUT_FILE_NAME
+from src.constants import INTERVIEW_POSTION, API_SERVICE_KEY, OUTPUT_FILE_NAME, DEVICE, URL
 
-openai.api_key = OPENAI_API_KEY
+openai.api_key = API_SERVICE_KEY
+
+torch.cuda.init()
 
 SYSTEM_PROMPT = f"""You are interviewing for a {INTERVIEW_POSTION} position.
-You will receive an audio transcription of the question. It may not be complete. You need to understand the question and write an answer to it.\n
+You will receive an text of the question. It may not be complete. You need to understand the question and write 
+an answer to it.\n
 """
-SHORTER_INSTRACT = "Concisely respond, limiting your answer to 70 words."
-LONGER_INSTRACT = (
-    "Before answering, take a deep breath and think one step at a time. Believe the answer in no more than 150 words."
-)
+SHORTER_INSTRACT = "Concisely respond, limiting your answer to 70 words. Answer in Russian."
+LONGER_INSTRACT = """Before answering, take a deep breath and think one step at a time. 
+Believe the answer in no more than 150 words. Answer in Russian."""
+
+model = whisper.load_model("medium")
 
 
 def transcribe_audio(path_to_file: str = OUTPUT_FILE_NAME) -> str:
-    """
-    Transcribes an audio file into text.
-
-    Args:
-        path_to_file (str, optional): The path to the audio file to be transcribed.
-
-    Returns:
-        str: The transcribed text.
-
-    Raises:
-        Exception: If the audio file fails to transcribe.
-    """
-    with open(path_to_file, "rb") as audio_file:
+    with open(path_to_file, "rb"):
         try:
-            transcript = openai.Audio.translate("whisper-1", audio_file)
+            options = {
+                "language": "russian",
+                "task": "transcribe"
+            }
+            with torch.cuda.device(DEVICE):
+                transcript = model.transcribe(path_to_file, **options)
         except Exception as error:
             logger.error(f"Can't transcribe audio: {error}")
             raise error
     return transcript["text"]
 
 
-def generate_answer(transcript: str, short_answer: bool = True, temperature: float = 0.7) -> str:
-    """
-    Generates an answer based on the given transcript using the OpenAI GPT-3.5-turbo model.
-
-    Args:
-        transcript (str): The transcript to generate an answer from.
-        short_answer (bool): Whether to generate a short answer or not. Defaults to True.
-        temperature (float): The temperature parameter for controlling the randomness of the generated answer.
-
-    Returns:
-        str: The generated answer.
-
-    Example:
-        ```python
-        transcript = "Can you tell me about the weather?"
-        answer = generate_answer(transcript, short_answer=False, temperature=0.8)
-        print(answer)
-        ```
-
-    Raises:
-        Exception: If the LLM fails to generate an answer.
-    """
+def generate_answer(transcript: str, short_answer: bool = True, temperature: float = 0.2) -> str:
     if short_answer:
         system_prompt = SYSTEM_PROMPT + SHORTER_INSTRACT
     else:
         system_prompt = SYSTEM_PROMPT + LONGER_INSTRACT
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            temperature=temperature,
-            messages=[
+        payload = {
+            "model": "llama-3",
+            "temperature": temperature,
+            "messages": [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": transcript},
-            ],
-        )
+                {"role": "assistant", "content": transcript}, ]
+        }
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "Authorization": 'c8eb8ae7-3f97-4255-81b9-bb0e1e1a8663'
+        }
+        response = requests.post(URL, json=payload, headers=headers)
+
     except Exception as error:
         logger.error(f"Can't generate answer: {error}")
         raise error
-    return response["choices"][0]["message"]["content"]
+    data = response.text
+    lines = [line.replace('data: ', '').strip() for line in data.splitlines() if line.strip()]
+
+    full_text = ""
+
+    for line in lines:
+        if line == "[DONE]":
+            continue
+        try:
+            json_object = json.loads(line)
+
+            content = json_object['choices'][0]['delta'].get('content', '')
+            full_text += content
+        except json.JSONDecodeError as e:
+            break
+
+    return full_text

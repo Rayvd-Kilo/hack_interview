@@ -67,6 +67,8 @@ def background_recording_loop() -> None:
         else:
             audio_data = np.vstack((audio_data, audio_sample))
     audio.save_audio_file(audio_data)
+    analyzed_text_label.update("Start analyzing...")
+    WINDOW.perform_long_operation(llm.transcribe_audio, "-WHISPER COMPLETED-")
 
 
 while True:
